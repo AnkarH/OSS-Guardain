@@ -1,0 +1,18 @@
+# OSS-Guardian Dependencies
+# Web UI Framework
+streamlit>=1.28.0
+plotly>=5.18.0
+pandas>=1.5.0
+
+# Configuration File Parsing
+pyyaml>=6.0
+
+# Code Editor/Viewer
+streamlit-ace>=0.1.1
+
+# Language Parsing (optional, for enhanced parsing)
+# javalang>=0.13.0  # For Java parsing (optional)
+# tree-sitter>=0.20.0  # For multi-language parsing (optional)
+
+# Note: ast, os, sys, subprocess, socket, re, json, logging, zipfile are built-in Python modules
+# They are listed here for documentation purposes only

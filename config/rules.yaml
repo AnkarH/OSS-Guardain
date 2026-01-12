@@ -1,0 +1,234 @@
+# OSS-Guardian Security Detection Rules
+# Each rule contains: id, name, pattern (regex), severity, description
+
+rules:
+  # WebShell Detection Rules
+  - id: webshell_eval
+    name: "WebShell - eval() Usage"
+    pattern: "eval\\s*\\("
+    severity: "critical"
+    description: "Detects usage of eval() function which can execute arbitrary code"
+    
+  - id: webshell_exec
+    name: "WebShell - exec() Usage"
+    pattern: "exec\\s*\\("
+    severity: "critical"
+    description: "Detects usage of exec() function which can execute arbitrary code"
+    
+  - id: webshell_import
+    name: "WebShell - __import__() Usage"
+    pattern: "__import__\\s*\\("
+    severity: "high"
+    description: "Detects usage of __import__() which can dynamically import modules"
+    
+  - id: webshell_compile
+    name: "WebShell - compile() Usage"
+    pattern: "compile\\s*\\("
+    severity: "high"
+    description: "Detects usage of compile() which can compile and execute code"
+    
+  - id: webshell_getattr
+    name: "WebShell - getattr() with Dangerous Functions"
+    pattern: "getattr\\s*\\([^,]+,\\s*['\"](eval|exec|__import__|compile)['\"]"
+    severity: "high"
+    description: "Detects getattr() calls that may access dangerous functions"
+    
+  # SQL Injection Detection Rules
+  - id: sql_injection_string_concat
+    name: "SQL Injection - String Concatenation"
+    pattern: "(SELECT|INSERT|UPDATE|DELETE|DROP|CREATE|ALTER)\\s+.*\\+.*['\"]"
+    severity: "high"
+    description: "Detects SQL queries with string concatenation that may lead to injection"
+    
+  - id: sql_injection_format
+    name: "SQL Injection - String Formatting"
+    pattern: "(SELECT|INSERT|UPDATE|DELETE|DROP|CREATE|ALTER).*%[sd]"
+    severity: "high"
+    description: "Detects SQL queries using string formatting that may be vulnerable"
+    
+  - id: sql_injection_raw_sql
+    name: "SQL Injection - Raw SQL Execution"
+    pattern: "(execute|executemany|query)\\s*\\([^)]*\\+[^)]*\\)"
+    severity: "high"
+    description: "Detects raw SQL execution with string concatenation"
+    
+  # RCE (Remote Code Execution) Detection Rules
+  - id: rce_os_system
+    name: "RCE - os.system() Call"
+    pattern: "os\\.system\\s*\\("
+    severity: "critical"
+    description: "Detects os.system() calls which can execute system commands"
+    
+  - id: rce_subprocess_call
+    name: "RCE - subprocess.call()"
+    pattern: "subprocess\\.(call|run|Popen)\\s*\\("
+    severity: "critical"
+    description: "Detects subprocess calls which can execute system commands"
+    
+  - id: rce_os_popen
+    name: "RCE - os.popen() Call"
+    pattern: "os\\.popen\\s*\\("
+    severity: "high"
+    description: "Detects os.popen() calls which can execute commands"
+    
+  - id: rce_commands_getoutput
+    name: "RCE - commands.getoutput()"
+    pattern: "commands\\.getoutput\\s*\\("
+    severity: "high"
+    description: "Detects commands.getoutput() calls (Python 2 legacy, but still dangerous)"
+    
+  # File Operation Risks
+  - id: file_traversal
+    name: "Path Traversal Attack"
+    pattern: "\\.\\./|\\.\\.\\\\"
+    severity: "medium"
+    description: "Detects path traversal patterns (../ or ..\\)"
+    
+  - id: file_sensitive_read
+    name: "Sensitive File Read"
+    pattern: "open\\s*\\([^)]*['\"](/etc/passwd|/etc/shadow|C:\\\\Windows\\\\System32|\\.env|\\.git/config)['\"]"
+    severity: "high"
+    description: "Detects attempts to read sensitive system files"
+    
+  - id: file_arbitrary_write
+    name: "Arbitrary File Write"
+    pattern: "open\\s*\\([^)]*['\"]w['\"]|open\\s*\\([^)]*['\"]a['\"]"
+    severity: "medium"
+    description: "Detects file write operations (may be legitimate, but needs review)"
+    
+  # Network Connection Risks
+  - id: network_socket_connect
+    name: "Network - socket.connect()"
+    pattern: "\\.connect\\s*\\("
+    severity: "medium"
+    description: "Detects socket connection attempts"
+    
+  - id: network_urllib
+    name: "Network - urllib Usage"
+    pattern: "urllib\\.(urlopen|request|urlretrieve)"
+    severity: "low"
+    description: "Detects urllib usage for network operations"
+    
+  - id: network_requests
+    name: "Network - requests Library"
+    pattern: "requests\\.(get|post|put|delete|patch)"
+    severity: "low"
+    description: "Detects requests library usage (usually legitimate, but may indicate data exfiltration)"
+    
+  # Backdoor Detection
+  - id: backdoor_hardcoded_password
+    name: "Backdoor - Hardcoded Password"
+    pattern: "(password|passwd|pwd)\\s*=\\s*['\"][^'\"]{3,}['\"]"
+    severity: "high"
+    description: "Detects hardcoded passwords in code"
+    
+  - id: backdoor_secret_key
+    name: "Backdoor - Hardcoded Secret Key"
+    pattern: "(secret|key|token|api_key)\\s*=\\s*['\"][^'\"]{10,}['\"]"
+    severity: "high"
+    description: "Detects hardcoded secret keys or API tokens"
+    
+  - id: backdoor_base64_decode
+    name: "Backdoor - Base64 Decoding"
+    pattern: "base64\\.(b64decode|decodestring)"
+    severity: "medium"
+    description: "Detects base64 decoding which may be used to obfuscate malicious code"
+    
+  - id: backdoor_reverse_shell
+    name: "Backdoor - Reverse Shell Pattern"
+    pattern: "(socket|subprocess|os\\.system).*['\"](bash|sh|cmd|powershell).*['\"]"
+    severity: "critical"
+    description: "Detects potential reverse shell patterns"
+    
+  # Information Disclosure
+  - id: info_debug_print
+    name: "Information Disclosure - Debug Print"
+    pattern: "print\\s*\\([^)]*(password|secret|key|token|api)"
+    severity: "low"
+    description: "Detects print statements that may leak sensitive information"
+    
+  - id: info_stack_trace
+    name: "Information Disclosure - Stack Trace Exposure"
+    pattern: "traceback\\.print_exc|sys\\.exc_info"
+    severity: "low"
+    description: "Detects stack trace printing which may expose system information"
+    language: "python"
+  
+  # Go Language Security Rules
+  - id: go_rce_exec_command
+    name: "Go RCE - exec.Command()"
+    pattern: "exec\\.Command\\s*\\("
+    severity: "critical"
+    description: "Detects exec.Command() calls which can execute system commands"
+    language: "go"
+  
+  - id: go_os_exec
+    name: "Go RCE - os/exec Usage"
+    pattern: "os/exec|exec\\.(Command|Run|Start)"
+    severity: "critical"
+    description: "Detects os/exec package usage for command execution"
+    language: "go"
+  
+  - id: go_network_dial
+    name: "Go Network - net.Dial()"
+    pattern: "net\\.Dial\\s*\\("
+    severity: "medium"
+    description: "Detects network dial operations"
+    language: "go"
+  
+  - id: go_sql_injection
+    name: "Go SQL Injection - String Concatenation"
+    pattern: "(Query|Exec|QueryRow)\\s*\\([^)]*\\+[^)]*\\)"
+    severity: "high"
+    description: "Detects SQL queries with string concatenation"
+    language: "go"
+  
+  - id: go_file_write
+    name: "Go File Write Operation"
+    pattern: "os\\.(Create|OpenFile|WriteFile)\\s*\\("
+    severity: "medium"
+    description: "Detects file write operations"
+    language: "go"
+  
+  # Java Language Security Rules
+  - id: java_rce_runtime_exec
+    name: "Java RCE - Runtime.exec()"
+    pattern: "Runtime\\.getRuntime\\(\\)\\.exec\\s*\\("
+    severity: "critical"
+    description: "Detects Runtime.exec() calls which can execute system commands"
+    language: "java"
+  
+  - id: java_rce_processbuilder
+    name: "Java RCE - ProcessBuilder"
+    pattern: "(new\\s+)?ProcessBuilder\\s*\\("
+    severity: "critical"
+    description: "Detects ProcessBuilder usage for command execution"
+    language: "java"
+  
+  - id: java_sql_injection
+    name: "Java SQL Injection - String Concatenation"
+    pattern: "(Statement|PreparedStatement)\\.(executeQuery|executeUpdate|execute)\\s*\\([^)]*\\+[^)]*\\)"
+    severity: "high"
+    description: "Detects SQL queries with string concatenation"
+    language: "java"
+  
+  - id: java_file_operation
+    name: "Java File Operation"
+    pattern: "(FileWriter|FileOutputStream|PrintWriter)\\s*\\("
+    severity: "medium"
+    description: "Detects file write operations"
+    language: "java"
+  
+  - id: java_network_connection
+    name: "Java Network Connection"
+    pattern: "(Socket|URL|HttpURLConnection)\\s*\\(|connect\\s*\\("
+    severity: "medium"
+    description: "Detects network connection operations"
+    language: "java"
+  
+  - id: java_deserialization
+    name: "Java Deserialization Risk"
+    pattern: "(ObjectInputStream|readObject|readUnshared)\\s*\\("
+    severity: "high"
+    description: "Detects deserialization operations which may be vulnerable"
+    language: "java"

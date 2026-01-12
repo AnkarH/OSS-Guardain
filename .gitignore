@@ -1,0 +1,37 @@
+# Python cache and artifacts
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Virtual environments
+.venv/
+venv/
+env/
+
+# Package/build outputs
+build/
+dist/
+*.egg-info/
+
+# IDE/editor settings
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Environment/config
+.env
+.env.*.local
+
+# Streamlit and logs
+.streamlit/
+data/logs/
+
+# Uploaded/temporary data and generated reports
+data/uploads/
+data/intermediate/
+data/reports/
+
+# OS files
+Thumbs.db
+.DS_Store

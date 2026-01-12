@@ -1,0 +1,28 @@
+# OSS-Guardian System Configuration
+
+# Dynamic analysis timeout in seconds
+timeout: 30
+
+# Log file storage path
+log_path: data/logs/
+
+# Report output path
+report_path: data/reports/
+
+# Intermediate results storage path
+intermediate_path: data/intermediate/
+
+# Upload directory for user files
+upload_path: data/uploads/
+
+# Maximum file size for upload (in bytes, 10MB default)
+max_file_size: 10485760
+
+# Enable/disable dynamic analysis (requires hooking)
+enable_dynamic_analysis: true
+
+# Enable/disable static analysis
+enable_static_analysis: true
+
+# Logging level: DEBUG, INFO, WARNING, ERROR, CRITICAL
+log_level: INFO

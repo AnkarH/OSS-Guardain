@@ -1,0 +1,50 @@
+[
+  {
+    "package": "requests",
+    "cve_id": "CVE-2023-32681",
+    "description": "Requests library vulnerable to SSRF",
+    "severity": "high",
+    "vulnerable_versions": "<2.31.0",
+    "fixed_version": "2.31.0"
+  },
+  {
+    "package": "urllib3",
+    "cve_id": "CVE-2023-45803",
+    "description": "urllib3 vulnerable to request smuggling",
+    "severity": "medium",
+    "vulnerable_versions": "<2.0.7",
+    "fixed_version": "2.0.7"
+  },
+  {
+    "package": "crypto",
+    "cve_id": "CVE-2023-23931",
+    "description": "Crypto library vulnerable to timing attack",
+    "severity": "high",
+    "vulnerable_versions": "<1.0.0",
+    "fixed_version": "1.0.0"
+  },
+  {
+    "package": "golang.org/x/crypto",
+    "cve_id": "CVE-2023-29491",
+    "description": "Go crypto package vulnerable to timing attack",
+    "severity": "high",
+    "vulnerable_versions": "<0.17.0",
+    "fixed_version": "0.17.0"
+  },
+  {
+    "package": "org.apache.commons:commons-collections4",
+    "cve_id": "CVE-2023-42860",
+    "description": "Apache Commons Collections vulnerable to deserialization",
+    "severity": "critical",
+    "vulnerable_versions": "<4.5",
+    "fixed_version": "4.5"
+  },
+  {
+    "package": "org.springframework:spring-core",
+    "cve_id": "CVE-2023-20863",
+    "description": "Spring Framework vulnerable to RCE",
+    "severity": "critical",
+    "vulnerable_versions": "<6.0.0",
+    "fixed_version": "6.0.0"
+  }
+]
