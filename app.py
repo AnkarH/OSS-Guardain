@@ -248,74 +248,83 @@ st.markdown("""
         margin: 20px 0;
         border-radius: 2px;
     }
-    
-    /* 右侧代码阅读器面板 */
-    #code-viewer-panel {
-        position: fixed;
-        right: 0;
-        top: 0;
-        width: 45%;
-        height: 100vh;
-        background: linear-gradient(135deg, #2C3E50 0%, #34495E 100%);
-        box-shadow: -4px 0 12px rgba(0, 0, 0, 0.3);
-        z-index: 1000;
-        overflow-y: auto;
-        transition: transform 0.3s ease;
-        padding: 20px;
+
+    /* 文档阅读器（威胁片段） */
+    .doc-reader {
+        background: linear-gradient(135deg, #FFFFFF 0%, #F8FBFC 100%);
+        border: 1px solid rgba(184,212,227,0.85);
+        border-radius: 12px;
+        padding: 12px;
+        margin: 10px 0 16px;
+        box-shadow: 0 4px 10px rgba(44, 62, 80, 0.08);
     }
-    
-    #code-viewer-panel.hidden {
-        transform: translateX(100%);
-        display: none !important;
-    }
-    
-    #code-viewer-toggle {
-        position: fixed;
-        right: 20px;
-        top: 80px;
-        z-index: 1001;
-        background: linear-gradient(135deg, #4A90A4 0%, #6B9BD1 100%);
-        color: white;
-        border: none;
-        padding: 10px 15px;
-        border-radius: 8px 0 0 8px;
-        cursor: pointer;
-        box-shadow: -2px 2px 8px rgba(0, 0, 0, 0.2);
-        transition: all 0.3s ease;
-    }
-    
-    #code-viewer-toggle:hover {
-        background: linear-gradient(135deg, #3A7A8A 0%, #5B8BC1 100%);
-        transform: translateX(-5px);
-    }
-    
-    .code-viewer-content {
-        color: #ECF0F1;
-        font-family: Consolas, Monaco, monospace;
-    }
-    
-    .code-viewer-header {
+    .doc-reader-legend {
         display: flex;
-        justify-content: space-between;
-        align-items: center;
-        margin-bottom: 20px;
-        padding-bottom: 15px;
-        border-bottom: 2px solid #5DADE2;
+        flex-wrap: wrap;
+        gap: 8px;
+        margin-bottom: 10px;
     }
-    
-    .code-viewer-close {
-        background: #E74C3C;
-        color: white;
-        border: none;
-        padding: 8px 15px;
+    .doc-legend-item {
+        padding: 4px 10px;
         border-radius: 6px;
-        cursor: pointer;
-        font-weight: bold;
+        font-size: 12px;
+        font-weight: 600;
+        color: #2C3E50;
+        border: 1px solid rgba(0,0,0,0.08);
+    }
+    .doc-snippet {
+        border: 1px solid rgba(184,212,227,0.6);
+        border-radius: 8px;
+        margin: 10px 0;
+        overflow: hidden;
+        background: #FFFFFF;
+    }
+    .doc-snippet-header {
+        background: #E8F0F5;
+        padding: 6px 10px;
+        font-size: 12px;
+        color: #2C3E50;
+        border-bottom: 1px solid rgba(184,212,227,0.6);
+    }
+    .doc-code {
+        font-family: Consolas, Monaco, monospace;
+        font-size: 12px;
+        line-height: 1.6;
+        background: #F7FAFC;
+        padding: 6px 0;
+    }
+    .doc-line {
+        display: flex;
+        padding: 2px 12px;
+    }
+    .doc-line-number {
+        width: 48px;
+        text-align: right;
+        margin-right: 12px;
+        color: #7F8C8D;
+        user-select: none;
+    }
+    .doc-line-content {
+        white-space: pre;
+        color: #2C3E50;
+    }
+    .doc-line.threat-critical {
+        background: #FFE6E6;
+        border-left: 4px solid #E74C3C;
+    }
+    .doc-line.threat-high {
+        background: #FFE8D6;
+        border-left: 4px solid #E67E22;
+    }
+    .doc-line.threat-medium {
+        background: #FFF4E6;
+        border-left: 4px solid #F39C12;
+    }
+    .doc-line.threat-low {
+        background: #E6F7E6;
+        border-left: 4px solid #27AE60;
     }
     
-    .code-viewer-close:hover {
-        background: #C0392B;
-    }
     </style>
 """, unsafe_allow_html=True)
 
@@ -361,12 +370,6 @@ def main():
         st.session_state.current_file_path = None
     if 'zip_temp_dirs' not in st.session_state:
         st.session_state.zip_temp_dirs = []
-    if 'show_code_viewer' not in st.session_state:
-        st.session_state.show_code_viewer = False
-    if 'code_viewer_visible' not in st.session_state:
-        st.session_state.code_viewer_visible = False
-    if 'code_viewer_file' not in st.session_state:
-        st.session_state.code_viewer_file = None
     if 'batch_results' not in st.session_state:
         st.session_state.batch_results = None
     if 'batch_extracted_files' not in st.session_state:
@@ -451,10 +454,6 @@ def main():
         extracted_files = handle_zip_upload(uploaded_zip, selected_language)
     
     # 主内容区域
-    # 触发分析时重置代码阅读器显示状态
-    if analyze_button:
-        st.session_state.show_code_viewer = False
-    
     if uploaded_file is not None:
         # 显示文件信息
         st.info(f"📄 **文件名称：** {uploaded_file.name} | **文件大小：** {uploaded_file.size} 字节")
@@ -483,7 +482,6 @@ def main():
                 # 保存结果到 session state
                 st.session_state.analysis_results = results
                 st.session_state.current_file_path = tmp_file_path
-                st.session_state.show_code_viewer = False
                 
                 # 读取源代码
                 with open(tmp_file_path, 'r', encoding='utf-8') as f:
@@ -771,7 +769,7 @@ def display_batch_results(batch_results: Dict, extracted_files: List[Dict], conf
     
     # 每个文件的报告下载（为避免重复 key，使用索引+文件名）
     successful_files = [r for r in batch_results.get('file_results', []) if r.get('success') and r.get('result')]
-    if successful_files:
+    if False and successful_files:
         st.markdown("### 📥 报告下载（单文件）")
         for idx, file_result in enumerate(successful_files):
             result = file_result.get('result', {})
@@ -847,50 +845,38 @@ def display_batch_results(batch_results: Dict, extracted_files: List[Dict], conf
         labels = [severity_cn.get(k, '未知') for k in severity_counts.keys()]
         values = list(severity_counts.values())
 
-        # 背景和卡片样式（动态渐变，不影响饼图对比度）
+        # 清爽浅色卡片风格，与页面整体配色一致
         pie_css = """
         <style>
-        .threat-pie-wrapper {
-            position: relative;
-            padding: 20px;
-            border-radius: 18px;
-            overflow: hidden;
-            box-shadow: 0 10px 30px rgba(0,0,0,0.08);
-            background: linear-gradient(135deg, #0f2027 0%, #203a43 50%, #2c5364 100%);
-        }
-        .threat-pie-wrapper::before {
-            content: "";
-            position: absolute;
-            inset: -50%;
-            background: radial-gradient(circle at 20% 20%, rgba(231,76,60,0.20), transparent 40%),
-                        radial-gradient(circle at 80% 30%, rgba(241,196,15,0.18), transparent 45%),
-                        radial-gradient(circle at 40% 80%, rgba(39,174,96,0.18), transparent 40%);
-            animation: floatGlow 16s ease-in-out infinite alternate;
-            filter: blur(20px);
-            z-index: 0;
-        }
-        @keyframes floatGlow {
-            from { transform: translate3d(-10px, -10px, 0) scale(1); }
-            to   { transform: translate3d(15px, 20px, 0) scale(1.05); }
-        }
-        .threat-pie-inner {
-            position: relative;
-            z-index: 1;
-            background: rgba(255,255,255,0.08);
-            border-radius: 14px;
-            padding: 12px;
-            backdrop-filter: blur(4px);
-        }
         .threat-pie-title {
-            color: #ECF0F1;
+            color: #2C3E50;
             font-weight: 700;
-            margin-bottom: 10px;
-            text-shadow: 0 2px 6px rgba(0,0,0,0.25);
+            margin: 0;
+            font-size: 18px;
+            letter-spacing: 0.2px;
+        }
+        /* 通过 marker 选择相邻组件，让标题 + 图表看起来是同一个面板 */
+        div[data-testid="stElementContainer"]:has(#threat-pie-marker) + div[data-testid="stElementContainer"],
+        div[data-testid="stElementContainer"]:has(#threat-pie-marker) + div[data-testid="stElementContainer"] + div[data-testid="stElementContainer"] {
+            background: linear-gradient(135deg, #FFFFFF 0%, #F8FBFC 100%);
+            border: 1px solid rgba(184,212,227,0.9);
+            box-shadow: 0 6px 16px rgba(44,62,80,0.08);
+        }
+        div[data-testid="stElementContainer"]:has(#threat-pie-marker) + div[data-testid="stElementContainer"] {
+            border-bottom: none;
+            border-radius: 14px 14px 0 0;
+            padding: 12px 16px 6px;
+        }
+        div[data-testid="stElementContainer"]:has(#threat-pie-marker) + div[data-testid="stElementContainer"] + div[data-testid="stElementContainer"] {
+            border-top: none;
+            border-radius: 0 0 14px 14px;
+            padding: 0 10px 12px;
         }
         </style>
         """
         st.markdown(pie_css, unsafe_allow_html=True)
-        st.markdown('<div class="threat-pie-wrapper"><div class="threat-pie-inner"><div class="threat-pie-title">威胁分布</div>', unsafe_allow_html=True)
+        st.markdown('<div id="threat-pie-marker"></div>', unsafe_allow_html=True)
+        st.markdown('<div class="threat-pie-title">威胁分布</div>', unsafe_allow_html=True)
 
         try:
             import plotly.express as px
@@ -899,24 +885,24 @@ def display_batch_results(batch_results: Dict, extracted_files: List[Dict], conf
                 values=values,
                 color=labels,
                 color_discrete_map=colors,
-                hole=0.08
+                hole=0.2
             )
-            # 3D/动感效果：加分离、描边和纹理
+            # 轻量动感效果，避免过度装饰
             fig.update_traces(
-                pull=[0.05 + 0.02*i for i in range(len(labels))],
+                pull=[0.02 + 0.01*i for i in range(len(labels))],
                 marker=dict(
-                    line=dict(color="#FFFFFF", width=2),
-                    pattern=dict(shape="\\")
+                    line=dict(color="#FFFFFF", width=2)
                 ),
+                opacity=0.95,
                 hovertemplate='%{label}: %{value} 个 (%{percent})'
             )
             fig.update_layout(
-                title="威胁分布",
                 legend_title="威胁等级",
-                legend=dict(orientation="h", y=-0.15),
-                margin=dict(t=50, b=20, l=20, r=20),
+                legend=dict(orientation="h", y=-0.2, x=0),
+                margin=dict(t=10, b=60, l=10, r=10),
                 paper_bgcolor='rgba(0,0,0,0)',
-                plot_bgcolor='rgba(0,0,0,0)'
+                plot_bgcolor='rgba(0,0,0,0)',
+                font=dict(color="#2C3E50", size=12)
             )
             st.plotly_chart(fig, use_container_width=True, config={"displaylogo": False})
         except Exception as e:
@@ -937,7 +923,6 @@ def display_batch_results(batch_results: Dict, extracted_files: List[Dict], conf
             except Exception:
                 st.write("威胁分布：", dict(zip(labels, values)))
 
-        st.markdown('</div></div>', unsafe_allow_html=True)
     
     # 所有威胁列表
     all_threats = batch_results.get('aggregated_threats', [])
@@ -962,7 +947,7 @@ def display_batch_results(batch_results: Dict, extracted_files: List[Dict], conf
             })
         
         st.dataframe(threat_data, use_container_width=True)
-    
+
     # 各文件详细结果
     st.markdown("### 📄 各文件分析结果")
     file_results = batch_results.get('file_results', [])
@@ -983,34 +968,17 @@ def display_batch_results(batch_results: Dict, extracted_files: List[Dict], conf
                 if threats:
                     for threat in threats:
                         st.write(f"- **{threat.get('threat_type', '未知')}** (严重程度: {threat.get('severity', 'medium')})")
+                    
+                    with st.expander("📖 文档阅读器（威胁片段）"):
+                        try:
+                            with open(file_path, 'r', encoding='utf-8', errors='ignore') as f:
+                                source_code = f.read()
+                            render_threat_snippet_reader(source_code, threats)
+                        except Exception as e:
+                            st.warning(f"加载源码失败，无法展示片段：{e}")
             else:
                 st.error(f"分析失败：{file_result.get('error', '未知错误')}")
     
-    # 批量代码阅读器：选择文件查看并高亮威胁
-    if successful_files:
-        st.markdown("---")
-        st.markdown("### 📖 代码阅读器（批量模式）")
-        option_map = {os.path.basename(r['file_path']): r for r in successful_files}
-        selected_label = st.selectbox("选择文件查看源码并高亮威胁", list(option_map.keys()))
-        if selected_label:
-            chosen = option_map[selected_label]
-            file_path = chosen['file_path']
-            threats_for_file = [t for t in all_threats if t.get('source_file') == file_path] or chosen['result'].get('threats', [])
-            try:
-                with open(file_path, 'r', encoding='utf-8', errors='ignore') as f:
-                    source_code = f.read()
-                st.session_state.source_code = source_code
-                st.session_state.code_viewer_file = file_path
-                # 默认不弹出，需手动点击
-                st.session_state.show_code_viewer = False
-                if st.button("显示代码阅读器", key=f"show_code_viewer_batch_{file_path}"):
-                    st.session_state.show_code_viewer = True
-                if st.session_state.get('show_code_viewer', False):
-                    display_code_viewer_sidebar(source_code, threats_for_file, file_path)
-            except Exception as e:
-                st.error(f"加载源码失败：{e}")
-    
-    # 批量分析报告下载
     st.markdown("---")
     st.markdown("### 📥 下载批量分析报告")
     
@@ -1088,6 +1056,117 @@ def display_batch_results(batch_results: Dict, extracted_files: List[Dict], conf
         )
 
 
+def build_threat_line_map(threats: List[Dict]) -> Dict[int, List[Dict[str, str]]]:
+    """构建威胁行号映射"""
+    threat_lines: Dict[int, List[Dict[str, str]]] = {}
+    for threat in threats:
+        severity = threat.get('severity', 'medium')
+        threat_type = threat.get('threat_type', '未知')
+        for line_num in threat.get('line_numbers', []) or []:
+            try:
+                line_int = int(line_num)
+            except (TypeError, ValueError):
+                continue
+            if line_int <= 0:
+                continue
+            threat_lines.setdefault(line_int, []).append({
+                'type': threat_type,
+                'severity': severity
+            })
+    return threat_lines
+
+
+def merge_context_ranges(line_numbers: List[int], total_lines: int, context_lines: int) -> List[tuple]:
+    """合并威胁行上下文范围"""
+    ranges = []
+    for ln in line_numbers:
+        start = max(1, ln - context_lines)
+        end = min(total_lines, ln + context_lines)
+        ranges.append((start, end))
+    ranges.sort(key=lambda x: x[0])
+    merged = []
+    for start, end in ranges:
+        if not merged or start > merged[-1][1] + 1:
+            merged.append([start, end])
+        else:
+            merged[-1][1] = max(merged[-1][1], end)
+    return [(s, e) for s, e in merged]
+
+
+def render_threat_snippet_reader(source_code: str, threats: List[Dict], context_lines: int = 4, max_snippets: int = 50):
+    """显示威胁代码片段阅读器"""
+    if not source_code:
+        st.info("未找到可展示的源代码。")
+        return
+    if not threats:
+        st.info("未检测到威胁，暂无片段可显示。")
+        return
+
+    lines = source_code.splitlines()
+    threat_lines = build_threat_line_map(threats)
+    if not threat_lines:
+        st.info("未检测到有效的威胁行号。")
+        return
+
+    severity_rank = {'critical': 4, 'high': 3, 'medium': 2, 'low': 1}
+
+    def pick_severity(items: List[Dict[str, str]]) -> str:
+        best = 'low'
+        best_rank = 0
+        for item in items:
+            sev = item.get('severity', 'low')
+            rank = severity_rank.get(sev, 0)
+            if rank > best_rank:
+                best = sev
+                best_rank = rank
+        return best
+
+    ranges = merge_context_ranges(sorted(threat_lines.keys()), len(lines), context_lines)
+    if not ranges:
+        st.info("未检测到可展示的片段范围。")
+        return
+
+    legend_html = """
+    <div class="doc-reader-legend">
+        <div class="doc-legend-item" style="background:#FFE6E6;border-color:#E74C3C;">严重</div>
+        <div class="doc-legend-item" style="background:#FFE8D6;border-color:#E67E22;">高危</div>
+        <div class="doc-legend-item" style="background:#FFF4E6;border-color:#F39C12;">中危</div>
+        <div class="doc-legend-item" style="background:#E6F7E6;border-color:#27AE60;">低危</div>
+    </div>
+    """
+
+    html_parts = ['<div class="doc-reader">', legend_html]
+    for idx, (start, end) in enumerate(ranges[:max_snippets], 1):
+        html_parts.append(f'<div class="doc-snippet"><div class="doc-snippet-header">片段 {idx}：第 {start} 行 - 第 {end} 行</div>')
+        html_parts.append('<div class="doc-code">')
+        for line_num in range(start, end + 1):
+            line_content = escape_html(lines[line_num - 1]) if line_num - 1 < len(lines) else ''
+            if line_num in threat_lines:
+                items = threat_lines[line_num]
+                severity = pick_severity(items)
+                threat_types = ', '.join(sorted({t.get("type", "未知") for t in items}))
+                html_parts.append(
+                    f'<div class="doc-line threat-{severity}" title="威胁: {escape_html(threat_types)}">'
+                    f'<span class="doc-line-number">{line_num:4d}</span>'
+                    f'<span class="doc-line-content">{line_content}</span>'
+                    f'</div>'
+                )
+            else:
+                html_parts.append(
+                    f'<div class="doc-line">'
+                    f'<span class="doc-line-number">{line_num:4d}</span>'
+                    f'<span class="doc-line-content">{line_content}</span>'
+                    f'</div>'
+                )
+        html_parts.append('</div></div>')
+
+    if len(ranges) > max_snippets:
+        html_parts.append(f'<div style="color:#7F8C8D;font-size:12px;">仅显示前 {max_snippets} 个片段。</div>')
+
+    html_parts.append('</div>')
+    st.markdown(''.join(html_parts), unsafe_allow_html=True)
+
+
 def display_results(results: dict, file_path: str = None):
     """显示分析结果"""
     risk_assessment = results.get('risk_assessment', {})
@@ -1156,6 +1235,20 @@ def display_results(results: dict, file_path: str = None):
             })
         
         st.dataframe(threat_data, use_container_width=True)
+
+        # 文档阅读器：仅展示威胁片段（单文件）
+        source_code = None
+        if file_path and os.path.exists(file_path):
+            try:
+                with open(file_path, 'r', encoding='utf-8', errors='ignore') as f:
+                    source_code = f.read()
+            except Exception:
+                source_code = st.session_state.source_code
+        else:
+            source_code = st.session_state.source_code
+
+        with st.expander("📖 文档阅读器（威胁片段）"):
+            render_threat_snippet_reader(source_code, threats)
         
         # 详细威胁信息
         with st.expander("📋 详细威胁信息"):
@@ -1262,223 +1355,6 @@ def display_results(results: dict, file_path: str = None):
         )
     
     # 代码阅读器按钮
-    if file_path and os.path.exists(file_path):
-        st.markdown("---")
-        col1, col2 = st.columns([3, 1])
-        with col1:
-            if st.button("📖 查看源代码（威胁位置高亮）", type="secondary", use_container_width=True):
-                st.session_state.show_code_viewer = True
-                st.rerun()
-        with col2:
-            if st.session_state.get('show_code_viewer', False):
-                if st.button("❌ 关闭", use_container_width=True):
-                    st.session_state.show_code_viewer = False
-                    st.rerun()
-    
-    # 显示代码阅读器（右侧面板）
-    if st.session_state.get('show_code_viewer', False) and st.session_state.source_code:
-        display_code_viewer_sidebar(st.session_state.source_code, threats, file_path)
-
-
-def display_code_viewer_sidebar(source_code: str, threats: List[Dict], file_path: str = None):
-    """在右侧边栏显示代码阅读器"""
-    # 构建威胁行号映射
-    threat_lines = {}
-    severity_colors = {
-        'critical': '#FFE6E6',
-        'high': '#FFE8D6',
-        'medium': '#FFF4E6',
-        'low': '#E6F7E6'
-    }
-    
-    severity_border_colors = {
-        'critical': '#E74C3C',
-        'high': '#E67E22',
-        'medium': '#F39C12',
-        'low': '#27AE60'
-    }
-    
-    for threat in threats:
-        severity = threat.get('severity', 'medium')
-        threat_type = threat.get('threat_type', '未知')
-        
-        for line_num in threat.get('line_numbers', []):
-            if line_num not in threat_lines:
-                threat_lines[line_num] = []
-            threat_lines[line_num].append({
-                'type': threat_type,
-                'severity': severity
-            })
-    
-    # 使用HTML/CSS创建右侧面板
-    lines = source_code.split('\n')
-    html_code = '<div class="code-viewer-content">'
-    
-    # 标题和关闭按钮
-    html_code += '''
-    <div class="code-viewer-header">
-        <h3 style="color: #ECF0F1; margin: 0;">📖 代码阅读器</h3>
-        <button class="code-viewer-close" onclick="document.getElementById(\'code-viewer-panel\').classList.add(\'hidden\')">关闭</button>
-    </div>
-    '''
-    
-    # 威胁图例
-    html_code += '''
-    <div style="background: rgba(255,255,255,0.1); padding: 15px; border-radius: 8px; margin-bottom: 20px;">
-        <h4 style="color: #ECF0F1; margin-top: 0;">威胁高亮图例</h4>
-        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px;">
-            <div style="background: #FFE6E6; padding: 8px; border-radius: 6px; border: 2px solid #E74C3C; text-align: center; color: #2C3E50; font-weight: bold;">🔴 严重</div>
-            <div style="background: #FFE8D6; padding: 8px; border-radius: 6px; border: 2px solid #E67E22; text-align: center; color: #2C3E50; font-weight: bold;">🟠 高危</div>
-            <div style="background: #FFF4E6; padding: 8px; border-radius: 6px; border: 2px solid #F39C12; text-align: center; color: #2C3E50; font-weight: bold;">🟡 中危</div>
-            <div style="background: #E6F7E6; padding: 8px; border-radius: 6px; border: 2px solid #27AE60; text-align: center; color: #2C3E50; font-weight: bold;">🟢 低危</div>
-        </div>
-    </div>
-    '''
-    
-    # 威胁位置索引
-    if threat_lines:
-        html_code += '''
-        <div style="background: rgba(255,255,255,0.1); padding: 15px; border-radius: 8px; margin-bottom: 20px; max-height: 150px; overflow-y: auto;">
-            <h4 style="color: #ECF0F1; margin-top: 0;">威胁位置（点击跳转）</h4>
-            <div style="display: flex; flex-wrap: wrap; gap: 8px;">
-        '''
-        for line_num, threats_at_line in sorted(threat_lines.items()):
-            threat_types = ', '.join([t['type'] for t in threats_at_line])
-            severity = threats_at_line[0]['severity']
-            severity_cn = {'critical': '严重', 'high': '高危', 'medium': '中危', 'low': '低危'}.get(severity, severity)
-            color = severity_border_colors.get(severity, '#999')
-            bg_color = severity_colors.get(severity, '#F0F0F0')
-            
-            html_code += f'''
-            <div style="background: {bg_color}; padding: 6px 10px; border-radius: 6px; border-left: 4px solid {color}; 
-                        cursor: pointer; color: #2C3E50; font-size: 12px;" 
-                 onclick="document.getElementById('line-{line_num}').scrollIntoView({{behavior: 'smooth', block: 'center'}});">
-                <strong>第 {line_num} 行</strong><br>
-                <small>{threat_types}<br>{severity_cn}</small>
-            </div>
-            '''
-        html_code += '</div></div>'
-    
-    # 代码内容
-    html_code += '<div style="background: #1C2833; padding: 15px; border-radius: 8px; font-family: Consolas, Monaco, monospace; font-size: 13px; line-height: 1.6;">'
-    
-    for line_num, line_content in enumerate(lines, 1):
-        line_id = f'line-{line_num}'
-        
-        if line_num in threat_lines:
-            threats_at_line = threat_lines[line_num]
-            severity = threats_at_line[0]['severity']
-            bg_color = severity_colors.get(severity, '#F0F0F0')
-            border_color = severity_border_colors.get(severity, '#999')
-            
-            html_code += f'''
-            <div id="{line_id}" style="background: {bg_color}; border-left: 4px solid {border_color}; 
-                        padding: 8px 12px; margin: 2px 0; border-radius: 4px; box-shadow: 0 2px 4px rgba(0,0,0,0.1);">
-                <span style="color: #95A5A6; margin-right: 15px; user-select: none;">{line_num:4d}</span>
-                <span style="color: #2C3E50;">{escape_html(line_content)}</span>
-            </div>
-            '''
-        else:
-            html_code += f'''
-            <div id="{line_id}" style="padding: 8px 12px; margin: 2px 0;">
-                <span style="color: #7F8C8D; margin-right: 15px; user-select: none;">{line_num:4d}</span>
-                <span style="color: #ECF0F1;">{escape_html(line_content)}</span>
-            </div>
-            '''
-    
-    html_code += '</div></div>'
-    
-    # 创建右侧面板
-    panel_html = f'''
-    <div id="code-viewer-panel" class="{'hidden' if not st.session_state.get('show_code_viewer', False) else ''}">
-        {html_code}
-    </div>
-    <button id="code-viewer-toggle" onclick="document.getElementById('code-viewer-panel').classList.toggle('hidden')">
-        {'隐藏' if st.session_state.get('show_code_viewer', False) else '显示'}代码阅读器
-    </button>
-    <script>
-        // 确保面板在页面加载时正确显示
-        document.addEventListener('DOMContentLoaded', function() {{
-            const panel = document.getElementById('code-viewer-panel');
-            if (panel && {str(st.session_state.get('show_code_viewer', False)).lower()}) {{
-                panel.classList.remove('hidden');
-            }}
-        }});
-    </script>
-    '''
-    
-    st.markdown(panel_html, unsafe_allow_html=True)
-
-
-def display_code_viewer(source_code: str, threats: List[Dict], file_path: str = None):
-    """显示代码阅读器，高亮威胁位置"""
-    st.markdown("---")
-    st.markdown("### 📖 代码阅读器 - 威胁位置高亮")
-    
-    # 构建威胁行号映射
-    threat_lines = {}
-    severity_colors = {
-        'critical': '#FFE6E6',  # 浅红色背景
-        'high': '#FFE8D6',      # 浅橙色背景
-        'medium': '#FFF4E6',    # 浅黄色背景
-        'low': '#E6F7E6'        # 浅绿色背景
-    }
-    
-    severity_border_colors = {
-        'critical': '#E74C3C',
-        'high': '#E67E22',
-        'medium': '#F39C12',
-        'low': '#27AE60'
-    }
-    
-    for threat in threats:
-        severity = threat.get('severity', 'medium')
-        threat_type = threat.get('threat_type', '未知')
-        
-        for line_num in threat.get('line_numbers', []):
-            if line_num not in threat_lines:
-                threat_lines[line_num] = []
-            threat_lines[line_num].append({
-                'type': threat_type,
-                'severity': severity
-            })
-    
-    # 显示威胁图例
-    st.markdown("**威胁高亮图例：**")
-    col1, col2, col3, col4 = st.columns(4)
-    col1.markdown('<div style="background: linear-gradient(135deg, #FFE6E6 0%, #FAD5D5 100%); padding: 8px; border-radius: 6px; border: 2px solid #E74C3C; text-align: center; font-weight: bold;">🔴 严重威胁</div>', unsafe_allow_html=True)
-    col2.markdown('<div style="background: linear-gradient(135deg, #FFE8D6 0%, #FAE5D3 100%); padding: 8px; border-radius: 6px; border: 2px solid #E67E22; text-align: center; font-weight: bold;">🟠 高危威胁</div>', unsafe_allow_html=True)
-    col3.markdown('<div style="background: linear-gradient(135deg, #FFF4E6 0%, #FDEBD0 100%); padding: 8px; border-radius: 6px; border: 2px solid #F39C12; text-align: center; font-weight: bold;">🟡 中危威胁</div>', unsafe_allow_html=True)
-    col4.markdown('<div style="background: linear-gradient(135deg, #E6F7E6 0%, #D5F4E6 100%); padding: 8px; border-radius: 6px; border: 2px solid #27AE60; text-align: center; font-weight: bold;">🟢 低危威胁</div>', unsafe_allow_html=True)
-    
-    # 显示威胁行号列表（可点击跳转）
-    if threat_lines:
-        st.markdown("**威胁位置索引（点击跳转）：**")
-        threat_lines_sorted = sorted(threat_lines.items())
-        
-        # 创建列布局
-        cols_per_row = 3
-        for i in range(0, len(threat_lines_sorted), cols_per_row):
-            cols = st.columns(cols_per_row)
-            for j, (line_num, threats_at_line) in enumerate(threat_lines_sorted[i:i+cols_per_row]):
-                with cols[j]:
-                    threat_types = ', '.join([t['type'] for t in threats_at_line])
-                    severity = threats_at_line[0]['severity']
-                    severity_cn = {'critical': '严重', 'high': '高危', 'medium': '中危', 'low': '低危'}.get(severity, severity)
-                    color = severity_border_colors.get(severity, '#999')
-                    st.markdown(
-                        f'<div style="background: {severity_colors.get(severity, "#F0F0F0")}; '
-                        f'padding: 8px; border-radius: 6px; border-left: 4px solid {color}; '
-                        f'margin: 5px 0; cursor: pointer;" '
-                        f'onclick="document.getElementById(\'line-{line_num}\').scrollIntoView({{behavior: \'smooth\', block: \'center\'}});">'
-                        f'<strong>第 {line_num} 行</strong><br>{threat_types}<br><small>{severity_cn}</small></div>',
-                        unsafe_allow_html=True
-                    )
-    
-    # 保留旧版本作为备用（如果需要）
-    pass
-
-
 def escape_html(text: str) -> str:
     """转义 HTML 特殊字符"""
     return (text
