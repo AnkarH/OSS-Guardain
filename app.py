@@ -522,7 +522,7 @@ def main():
         <div style="background-color: #FFFFFF; padding: 30px; border-radius: 10px; border-left: 5px solid #4A90A4;">
             <h2 style="color: #2C3E50; margin-top: 0;">欢迎使用 OSS-Guardian</h2>
             <p style="color: #34495E; font-size: 16px; line-height: 1.8;">
-                <strong>OSS-Guardian</strong> 是一个全面的 Python 代码安全分析工具，通过静态分析和动态分析相结合的方式，
+                <strong>OSS-Guardian</strong> 是一个全面的开源软件安全分析工具，通过静态分析和动态分析相结合的方式，
                 帮助您发现代码中的安全漏洞和恶意行为。
             </p>
         </div>
@@ -592,7 +592,7 @@ def main():
                       border-bottom: 2px solid #4A90A4; 
                       padding-bottom: 10px;">📖 使用说明</h3>
             <ol style="color: #34495E; line-height: 2.8; font-size: 16px;">
-                <li style="margin: 10px 0; padding-left: 10px;">在左侧边栏上传 Python 文件或 ZIP 压缩包</li>
+                <li style="margin: 10px 0; padding-left: 10px;">在左侧边栏上传 Python/Java/Go 源代码文件或 ZIP 压缩包</li>
                 <li style="margin: 10px 0; padding-left: 10px;">配置分析选项（静态分析/动态分析）</li>
                 <li style="margin: 10px 0; padding-left: 10px;">点击"开始分析"按钮启动分析</li>
                 <li style="margin: 10px 0; padding-left: 10px;">查看分析结果、威胁位置高亮和下载报告</li>
@@ -1293,22 +1293,6 @@ def display_results(results: dict, file_path: str = None):
             render_threat_snippet_reader(source_code, threats)
         
         # 详细威胁信息
-        with st.expander("📋 详细威胁信息"):
-            for i, threat in enumerate(threats, 1):
-                threat_type = threat.get('threat_type', '未知')
-                severity = threat.get('severity', 'medium')
-                severity_text = severity_cn.get(severity, severity.upper())
-                
-                st.markdown(f"#### {i}. {threat_type}")
-                st.write(f"**严重程度：** {severity_text}")
-                st.write(f"**描述：** {threat.get('description', '')}")
-                st.write(f"**行号：** {', '.join(map(str, threat.get('line_numbers', []))) or 'N/A'}")
-                
-                evidence = threat.get('evidence', [])
-                if evidence:
-                    with st.expander(f"证据信息（{len(evidence)} 项）"):
-                        for ev in evidence[:5]:  # 显示前5项
-                            st.json(ev)
     else:
         st.success("✅ 未检测到威胁！代码相对安全。")
     
