@@ -447,6 +447,12 @@ def main():
     
     # 分析按钮
     analyze_button = st.sidebar.button("🔍 开始分析", type="primary", use_container_width=True)
+    clear_cache_clicked = st.sidebar.button("🧹 清除缓存", use_container_width=True, help="清除本地临时文件（reports/uploads/临时解压目录等）")
+    if clear_cache_clicked:
+        clear_local_cache(config)
+        st.sidebar.success("已清除本地缓存和临时文件")
+        st.rerun()
+
     
     # 处理 ZIP 文件上传
     extracted_files = []
@@ -681,6 +687,42 @@ def cleanup_temp_dirs(temp_dirs):
     for d in temp_dirs:
         if d and os.path.exists(d):
             shutil.rmtree(d, ignore_errors=True)
+
+def clear_local_cache(config: Dict):
+    """清理本地缓存和临时文件（reports/uploads/解压目录）"""
+    temp_file_path = st.session_state.get('current_file_path')
+    if temp_file_path and os.path.exists(temp_file_path):
+        try:
+            os.remove(temp_file_path)
+        except Exception:
+            pass
+
+    temp_dirs = set(st.session_state.get('zip_temp_dirs') or [])
+    for file_info in st.session_state.get('batch_extracted_files', []) or []:
+        temp_dir = file_info.get('temp_dir')
+        if temp_dir:
+            temp_dirs.add(temp_dir)
+    cleanup_temp_dirs(temp_dirs)
+
+    upload_dir = os.path.join("data", "uploads")
+    if os.path.isdir(upload_dir):
+        shutil.rmtree(upload_dir, ignore_errors=True)
+
+    report_dir = config.get('settings', {}).get('report_path', 'data/reports/')
+    if report_dir and os.path.isdir(report_dir):
+        shutil.rmtree(report_dir, ignore_errors=True)
+
+    st.session_state.analysis_results = None
+    st.session_state.source_code = None
+    st.session_state.current_file_path = None
+    st.session_state.zip_temp_dirs = []
+    st.session_state.batch_results = None
+    st.session_state.batch_extracted_files = []
+    st.session_state.selected_files = set()
+
+    for key in list(st.session_state.keys()):
+        if key.startswith("file_checkbox_"):
+            del st.session_state[key]
 
 
 def display_zip_files(extracted_files: List[Dict], config: Dict, analyze_button: bool):
