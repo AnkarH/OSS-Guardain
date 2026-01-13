@@ -67,6 +67,10 @@ class FileMonitor:
                     f.write(f"[{timestamp}] {alert_level} FILE {operation.upper()}: {file_path} (mode: {mode})\n")
             except Exception:
                 pass
+
+    def is_sensitive_file(self, file_path: str) -> bool:
+        """Return True if file path matches known sensitive patterns."""
+        return any(sensitive in file_path for sensitive in self.sensitive_files)
     
     def get_file_operations(self) -> List[Dict[str, Any]]:
         """Get all recorded file operations."""
@@ -77,39 +81,62 @@ class FileMonitor:
         return [op for op in self.file_operations if op.get('is_sensitive', False)]
 
 
-def analyze_file_activity(log_file: str) -> List[Dict[str, Any]]:
+def analyze_file_activity(log_source) -> List[Dict[str, Any]]:
     """
     Analyze file activity from log file.
     
     Args:
-        log_file: Path to log file containing file operations
+        log_source: Log file path or list of log entries
         
     Returns:
         List[Dict]: List of file operations
     """
     operations = []
-    
-    if not os.path.exists(log_file):
+    lines = []
+
+    if isinstance(log_source, list):
+        lines = log_source
+    elif isinstance(log_source, str):
+        if not os.path.exists(log_source):
+            return operations
+        try:
+            with open(log_source, 'r', encoding='utf-8') as f:
+                lines = f.readlines()
+        except Exception:
+            return operations
+    else:
         return operations
-    
+
     try:
-        with open(log_file, 'r', encoding='utf-8') as f:
-            for line in f:
-                if 'FILE' in line:
+        for line in lines:
+            if 'FILE' in line:
                     # Parse log entry
                     # Format: [timestamp] [ALERT/INFO] FILE OPERATION: path (mode: mode)
                     parts = line.strip().split('FILE')
                     if len(parts) == 2:
                         operation_part = parts[1].strip()
-                        operation_match = operation_part.split(':')
+                        operation_match = operation_part.split(':', 1)
                         if len(operation_match) >= 2:
                             operation = operation_match[0].strip()
                             file_path = operation_match[1].split('(mode:')[0].strip()
+                            mode = ''
+                            if '(mode:' in operation_part:
+                                mode = operation_part.split('(mode:')[1].split(')')[0].strip()
+                            line_numbers = []
+                            if 'stack=' in line:
+                                import re
+                                for match in re.finditer(r'([A-Za-z]:\\\\[^:]+|/[^:]+):(\\d+)', line):
+                                    try:
+                                        line_numbers.append(int(match.group(2)))
+                                    except ValueError:
+                                        continue
                             
                             operations.append({
                                 'operation': operation.lower(),
                                 'file_path': file_path,
-                                'is_sensitive': '[ALERT]' in line
+                                'mode': mode,
+                                'is_sensitive': '[ALERT]' in line,
+                                'line_numbers': line_numbers
                             })
     except Exception:
         pass

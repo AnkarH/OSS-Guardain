@@ -26,6 +26,8 @@ def aggregate_results(
             - 'syscalls': List of system call logs
             - 'network_activities': List of network activities
             - 'fuzz_results': List of fuzz test results
+            - 'file_activities': List of file activities
+            - 'memory_findings': List of memory findings
             - 'execution_log': str - Path to execution log file
     
     Returns:
@@ -36,6 +38,8 @@ def aggregate_results(
             'syscalls': [],
             'network_activities': [],
             'fuzz_results': [],
+            'file_activities': [],
+            'memory_findings': [],
             'execution_log': ''
         }
     
@@ -49,6 +53,8 @@ def aggregate_results(
     syscalls = dynamic_results.get('syscalls', [])
     network_activities = dynamic_results.get('network_activities', [])
     fuzz_results = dynamic_results.get('fuzz_results', [])
+    file_activities = dynamic_results.get('file_activities', [])
+    memory_findings = dynamic_results.get('memory_findings', [])
     execution_log = dynamic_results.get('execution_log', '')
     
     # Count threats by severity
@@ -81,11 +87,24 @@ def aggregate_results(
     
     # Count from network activities (usually medium)
     medium_count += len(network_activities)
+
+    # Count from file activities (sensitive is high, otherwise low)
+    for activity in file_activities:
+        if activity.get('is_sensitive'):
+            high_count += 1
+        else:
+            low_count += 1
+
+    # Count from memory findings (memory API usage is high, code exec is medium)
+    memory_high = sum(1 for f in memory_findings if f.get('type') == 'memory_api')
+    memory_medium = len(memory_findings) - memory_high
+    high_count += memory_high
+    medium_count += memory_medium
     
-    # Count from fuzz results (crashes are high severity)
+    # Count from fuzz results (crashes are medium severity)
     for fuzz_result in fuzz_results:
         if fuzz_result.get('crashed', False):
-            high_count += 1
+            medium_count += 1
     
     total_threats = critical_count + high_count + medium_count + low_count
     
@@ -101,6 +120,8 @@ def aggregate_results(
             'syscalls': syscalls,
             'network_activities': network_activities,
             'fuzz_results': fuzz_results,
+            'file_activities': file_activities,
+            'memory_findings': memory_findings,
             'execution_log': execution_log
         },
         'summary': {

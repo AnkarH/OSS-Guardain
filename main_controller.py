@@ -7,6 +7,7 @@ Orchestrates the complete security analysis workflow.
 
 import os
 import yaml
+from concurrent.futures import ProcessPoolExecutor, as_completed
 from typing import Dict, Any, Optional
 
 # Preprocessing imports
@@ -33,9 +34,11 @@ from engines.static.taint_analysis import analyze as taint_analyze
 from engines.static.cfg_analysis import analyze as cfg_analyze
 
 # Dynamic analysis imports
-from engines.dynamic.sandbox import run_in_sandbox
+from engines.dynamic.sandbox import run_in_sandbox, run_direct
 from engines.dynamic.network_monitor import analyze_network_activity
 from engines.dynamic.fuzzer import fuzz_execution
+from engines.dynamic.file_monitor import analyze_file_activity
+from engines.dynamic.memory_analyzer import analyze_memory
 
 # Analysis imports
 from engines.analysis.aggregator import aggregate_results
@@ -72,7 +75,11 @@ def load_config(config_dir: str = 'config') -> Dict[str, Any]:
             'report_path': 'data/reports/',
             'enable_dynamic_analysis': True,
             'enable_static_analysis': True,
-            'enable_sandbox': True
+            'enable_sandbox': True,
+            'dynamic_timeout': 2,
+            'dynamic_log_mode': 'queue',
+            'parallel_analysis': True,
+            'parallel_workers': None
         }
     
     # Load rules
@@ -152,6 +159,8 @@ def analyze_file(
     enable_dynamic = settings.get('enable_dynamic_analysis', True)
     enable_sandbox = settings.get('enable_sandbox', True)
     timeout = settings.get('timeout', 30)
+    dynamic_timeout = min(settings.get('dynamic_timeout', 2), timeout)
+    dynamic_log_mode = settings.get('dynamic_log_mode', 'queue')
     
     # Detect language
     language = detect_language(file_path)
@@ -310,55 +319,67 @@ def analyze_file(
         if enable_dynamic and language == 'python':
             print("[INFO] Performing dynamic analysis...")
             
-            if enable_sandbox:
-                # Run in sandbox
-                sandbox_result = run_in_sandbox(
-                    file_path=file_path,
-                    args=[],
-                    timeout=timeout
-                )
-                
-                # Analyze network activity
-                network_activities = []
-                if sandbox_result.get('log_file'):
-                    network_activities = analyze_network_activity(sandbox_result['log_file'])
-                
-                # Fuzz testing
-                fuzz_results = fuzz_execution(
-                    file_path=file_path,
-                    num_tests=3,
-                    timeout=min(timeout, 10)
-                )
-                
-                # Extract syscalls from log
-                syscalls = []
-                if sandbox_result.get('log_entries'):
-                    for entry in sandbox_result['log_entries']:
-                        if '[ALERT] SYSCALL:' in entry or '[ALERT] NETWORK:' in entry:
-                            syscalls.append(entry.strip())
-                
-                results['dynamic_results'] = {
-                    'syscalls': syscalls,
-                    'network_activities': network_activities,
-                    'fuzz_results': fuzz_results,
-                    'execution_log': sandbox_result.get('log_file', ''),
-                    'sandbox_result': sandbox_result
-                }
-            else:
-                # 动态分析开启但沙箱禁用时，直接跳过以提速
-                results['dynamic_results'] = {
-                    'syscalls': [],
-                    'network_activities': [],
-                    'fuzz_results': [],
-                    'execution_log': '',
-                    'note': 'Sandbox disabled by user; dynamic analysis skipped.'
-                }
+            # Run with hook runner; isolation is optional
+            sandbox_result = run_in_sandbox(
+                file_path=file_path,
+                args=[],
+                timeout=dynamic_timeout,
+                log_mode=dynamic_log_mode
+            )
+            
+            # Analyze network activity
+            network_activities = []
+            log_entries = sandbox_result.get('log_entries', [])
+            if log_entries:
+                network_activities = analyze_network_activity(log_entries)
+            elif sandbox_result.get('log_file'):
+                network_activities = analyze_network_activity(sandbox_result['log_file'])
+
+            # Analyze file activity and memory signals
+            file_activities = []
+            memory_findings = []
+            if log_entries:
+                file_activities = analyze_file_activity(log_entries)
+                memory_findings = analyze_memory(log_source=log_entries)
+            elif sandbox_result.get('log_file'):
+                file_activities = analyze_file_activity(sandbox_result['log_file'])
+                memory_findings = analyze_memory(log_source=sandbox_result['log_file'])
+
+            # Fuzz testing
+            fuzz_results = fuzz_execution(
+                file_path=file_path,
+                num_tests=3,
+                timeout=min(dynamic_timeout, 2),
+                use_sandbox=True,
+                log_mode=dynamic_log_mode
+            )
+
+            # Extract syscalls from log
+            syscalls = []
+            if sandbox_result.get('log_entries'):
+                for entry in sandbox_result['log_entries']:
+                    if '[ALERT] SYSCALL:' in entry or '[ALERT] NETWORK:' in entry:
+                        syscalls.append(entry.strip())
+
+            results['dynamic_results'] = {
+                'syscalls': syscalls,
+                'network_activities': network_activities,
+                'file_activities': file_activities,
+                'memory_findings': memory_findings,
+                'fuzz_results': fuzz_results,
+                'execution_log': sandbox_result.get('log_file', ''),
+                'sandbox_result': sandbox_result
+            }
+            if not enable_sandbox:
+                results['dynamic_results']['note'] = 'Sandbox disabled; hooks enabled without isolation.'
         elif enable_dynamic and language != 'python':
             # Dynamic analysis not yet supported for Go/Java
             print(f"[INFO] Dynamic analysis not yet supported for {language}, skipping...")
             results['dynamic_results'] = {
                 'syscalls': [],
                 'network_activities': [],
+                'file_activities': [],
+                'memory_findings': [],
                 'fuzz_results': [],
                 'execution_log': '',
                 'note': f'Dynamic analysis not yet implemented for {language}'
@@ -367,6 +388,8 @@ def analyze_file(
             results['dynamic_results'] = {
                 'syscalls': [],
                 'network_activities': [],
+                'file_activities': [],
+                'memory_findings': [],
                 'fuzz_results': [],
                 'execution_log': ''
             }
@@ -431,6 +454,12 @@ def analyze_file(
     return results
 
 
+def _analyze_file_worker(payload):
+    """Helper for parallel analysis."""
+    file_path, config = payload
+    return file_path, analyze_file(file_path, config)
+
+
 def analyze_multiple_files(
     file_paths: list,
     config: Optional[Dict[str, Any]] = None
@@ -456,44 +485,79 @@ def analyze_multiple_files(
     file_results = []
     all_threats = []
     total_risk_score = 0
-    
-    for i, file_path in enumerate(file_paths, 1):
-        print(f"[INFO] Analyzing file {i}/{len(file_paths)}: {file_path}")
-        try:
-            result = analyze_file(file_path, config)
-            if result.get('skipped'):
-                file_results.append({
-                    'file_path': file_path,
-                    'result': result,
-                    'success': False,
-                    'error': result.get('reason', 'skipped')
-                })
-                continue
-            file_results.append({
-                'file_path': file_path,
-                'result': result,
-                'success': True
-            })
-            
-            # 收集威胁
-            threats = result.get('threats', [])
-            for threat in threats:
-                threat['source_file'] = file_path
-                all_threats.append(threat)
-            
-            # 累加风险分数
-            risk_assessment = result.get('risk_assessment', {})
-            total_risk_score += risk_assessment.get('risk_score', 0)
-            
-        except Exception as e:
-            print(f"[ERROR] Failed to analyze {file_path}: {e}")
+    settings = config.get('settings', {})
+    use_parallel = settings.get('parallel_analysis', True) and len(file_paths) > 1
+    max_workers = settings.get('parallel_workers') or min(4, os.cpu_count() or 2)
+
+    results_by_path = {}
+    errors_by_path = {}
+
+    if use_parallel:
+        with ProcessPoolExecutor(max_workers=max_workers) as executor:
+            futures = {
+                executor.submit(_analyze_file_worker, (file_path, config)): file_path
+                for file_path in file_paths
+            }
+            for future in as_completed(futures):
+                file_path = futures[future]
+                try:
+                    _, result = future.result()
+                    results_by_path[file_path] = result
+                except Exception as e:
+                    errors_by_path[file_path] = str(e)
+    else:
+        for i, file_path in enumerate(file_paths, 1):
+            print(f"[INFO] Analyzing file {i}/{len(file_paths)}: {file_path}")
+            try:
+                result = analyze_file(file_path, config)
+                results_by_path[file_path] = result
+            except Exception as e:
+                print(f"[ERROR] Failed to analyze {file_path}: {e}")
+                errors_by_path[file_path] = str(e)
+
+    for file_path in file_paths:
+        if file_path in errors_by_path:
             file_results.append({
                 'file_path': file_path,
                 'result': None,
                 'success': False,
-                'error': str(e)
+                'error': errors_by_path[file_path]
             })
-    
+            continue
+
+        result = results_by_path.get(file_path)
+        if result is None:
+            file_results.append({
+                'file_path': file_path,
+                'result': None,
+                'success': False,
+                'error': 'missing result'
+            })
+            continue
+
+        if result.get('skipped'):
+            file_results.append({
+                'file_path': file_path,
+                'result': result,
+                'success': False,
+                'error': result.get('reason', 'skipped')
+            })
+            continue
+
+        file_results.append({
+            'file_path': file_path,
+            'result': result,
+            'success': True
+        })
+
+        threats = result.get('threats', [])
+        for threat in threats:
+            threat['source_file'] = file_path
+            all_threats.append(threat)
+
+        risk_assessment = result.get('risk_assessment', {})
+        total_risk_score += risk_assessment.get('risk_score', 0)
+
     # 汇总统计
     successful_analyses = [r for r in file_results if r['success']]
     failed_analyses = [r for r in file_results if not r['success']]
@@ -503,6 +567,14 @@ def analyze_multiple_files(
         avg_risk_score = total_risk_score / len(successful_analyses)
         overall_risk = assess_risk(all_threats)
         overall_risk['average_risk_score'] = avg_risk_score
+        if avg_risk_score >= 80:
+            overall_risk['average_risk_level'] = 'critical'
+        elif avg_risk_score >= 50:
+            overall_risk['average_risk_level'] = 'high'
+        elif avg_risk_score >= 20:
+            overall_risk['average_risk_level'] = 'medium'
+        else:
+            overall_risk['average_risk_level'] = 'low'
     else:
         overall_risk = {
             'risk_score': 0,

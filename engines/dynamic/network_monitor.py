@@ -10,12 +10,12 @@ import re
 from typing import List, Dict, Any, Optional
 
 
-def analyze_network_activity(log_file: str) -> List[Dict[str, Any]]:
+def analyze_network_activity(log_source) -> List[Dict[str, Any]]:
     """
     Analyze log file to extract network connection activities.
     
     Args:
-        log_file: Path to log file
+        log_source: Log file path or list of log entries
         
     Returns:
         List[Dict]: List of network activities, each containing:
@@ -25,21 +25,29 @@ def analyze_network_activity(log_file: str) -> List[Dict[str, Any]]:
             - 'line': str - Original log line
             - 'raw_address': tuple or str - Raw address from log
     """
-    if not log_file or not os.path.exists(log_file):
+    if not log_source:
         return []
-    
+
     activities = []
-    
-    try:
-        with open(log_file, 'r', encoding='utf-8') as f:
-            lines = f.readlines()
-    except Exception as e:
+    lines: List[str] = []
+
+    if isinstance(log_source, list):
+        lines = log_source
+    elif isinstance(log_source, str):
+        if not os.path.exists(log_source):
+            return []
+        try:
+            with open(log_source, 'r', encoding='utf-8') as f:
+                lines = f.readlines()
+        except Exception:
+            return []
+    else:
         return []
     
     # Pattern to match network activity log entries
     # Format: [TIMESTAMP] [ALERT] NETWORK: socket.connect called with address='IP:PORT' | stack=...
     network_pattern = re.compile(
-        r'\[([^\]]+)\]\s+\[ALERT\]\s+NETWORK:\s+socket\.(connect|bind)\s+called\s+with\s+address=[\'"]([^\'"]+)[\'"]'
+        r'\[([^\]]+)\]\s+\[ALERT\]\s+NETWORK:\s+socket\.(connect|connect_ex|bind|create_connection)\s+called\s+with\s+address=[\'"]([^\'"]+)[\'"]'
     )
     
     for line in lines:

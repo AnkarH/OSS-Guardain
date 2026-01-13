@@ -8,7 +8,7 @@ Generates random command line arguments and tests target script execution.
 import random
 import string
 from typing import List, Dict, Any
-from engines.dynamic.sandbox import run_in_sandbox
+from engines.dynamic.sandbox import run_in_sandbox, run_direct
 
 
 def generate_random_string(min_length: int = 1, max_length: int = 100) -> str:
@@ -78,7 +78,9 @@ def generate_fuzz_cases(num_tests: int = 3) -> List[str]:
 def fuzz_execution(
     file_path: str,
     num_tests: int = 3,
-    timeout: int = 10
+    timeout: int = 10,
+    use_sandbox: bool = True,
+    log_mode: str = "queue"
 ) -> List[Dict[str, Any]]:
     """
     Fuzz test a Python script by running it with random arguments.
@@ -87,6 +89,8 @@ def fuzz_execution(
         file_path: Path to target Python file
         num_tests: Number of fuzz test cases to run
         timeout: Timeout per test in seconds
+        use_sandbox: Whether to run with hooks/sandbox
+        log_mode: "queue" for in-memory logs, "file" for file logs
         
     Returns:
         List[Dict]: List of test results, each containing:
@@ -104,26 +108,47 @@ def fuzz_execution(
     
     for test_input in test_cases:
         try:
-            # Run in sandbox with test input
-            result = run_in_sandbox(
-                file_path=file_path,
-                args=[test_input],
-                timeout=timeout
-            )
+            # Run with or without sandbox
+            if use_sandbox:
+                result = run_in_sandbox(
+                    file_path=file_path,
+                    args=[test_input],
+                    timeout=timeout,
+                    log_mode=log_mode
+                )
+            else:
+                result = run_direct(
+                    file_path=file_path,
+                    args=[test_input],
+                    timeout=timeout
+                )
             
             # Determine if crashed
             crashed = (
-                result['return_code'] != 0 or
+                (result['return_code'] != 0 and not result.get('timed_out')) or
                 'Traceback' in result['stderr'] or
-                'Error' in result['stderr'] or
-                result['timed_out']
+                'Error' in result['stderr']
             )
+
+            # Extract line numbers from stderr (if any)
+            line_numbers = []
+            if result.get('stderr'):
+                import re
+                for match in re.finditer(r'File \"[^\"]+\", line (\\d+)', result['stderr']):
+                    try:
+                        line_numbers.append(int(match.group(1)))
+                    except ValueError:
+                        continue
             
-            # Analyze network activities from log
+            # Analyze network activities from log (sandbox mode only)
             network_activities = []
-            if result.get('log_file'):
+            if use_sandbox:
                 from engines.dynamic.network_monitor import analyze_network_activity
-                network_activities = analyze_network_activity(result['log_file'])
+                log_entries = result.get('log_entries', [])
+                if log_entries:
+                    network_activities = analyze_network_activity(log_entries)
+                elif result.get('log_file'):
+                    network_activities = analyze_network_activity(result['log_file'])
             
             results.append({
                 'test_input': test_input,
@@ -134,7 +159,8 @@ def fuzz_execution(
                 'execution_time': result['execution_time'],
                 'log_file': result.get('log_file', ''),
                 'network_activities': network_activities,
-                'timed_out': result.get('timed_out', False)
+                'timed_out': result.get('timed_out', False),
+                'line_numbers': line_numbers
             })
         
         except Exception as e:

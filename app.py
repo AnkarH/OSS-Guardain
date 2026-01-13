@@ -682,7 +682,6 @@ def handle_zip_upload(uploaded_zip, selected_language: str = None) -> List[Dict[
     return extracted_files
 
 
-def cleanup_temp_dirs(temp_dirs):
     """删除临时解压目录"""
     for d in temp_dirs:
         if d and os.path.exists(d):
@@ -702,7 +701,6 @@ def clear_local_cache(config: Dict):
         temp_dir = file_info.get('temp_dir')
         if temp_dir:
             temp_dirs.add(temp_dir)
-    cleanup_temp_dirs(temp_dirs)
 
     upload_dir = os.path.join("data", "uploads")
     if os.path.isdir(upload_dir):
@@ -715,9 +713,9 @@ def clear_local_cache(config: Dict):
     st.session_state.analysis_results = None
     st.session_state.source_code = None
     st.session_state.current_file_path = None
-    st.session_state.zip_temp_dirs = []
     st.session_state.batch_results = None
     st.session_state.batch_extracted_files = []
+    st.session_state.batch_source_cache = {}
     st.session_state.selected_files = set()
 
     for key in list(st.session_state.keys()):
@@ -786,8 +784,6 @@ def display_zip_files(extracted_files: List[Dict], config: Dict, analyze_button:
             display_batch_results(batch_results, extracted_files, config)
             # 分析结束，清理解压目录
             temp_dirs = {f.get('temp_dir') for f in extracted_files}
-            cleanup_temp_dirs(temp_dirs)
-            st.session_state.zip_temp_dirs = []
     elif st.session_state.get('batch_results'):
         # 未再次点击分析，但已有历史结果，继续展示
         display_batch_results(st.session_state.batch_results, st.session_state.get('batch_extracted_files', extracted_files), config)
@@ -856,7 +852,7 @@ def display_batch_results(batch_results: Dict, extracted_files: List[Dict], conf
     with col1:
         st.metric("平均风险分数", f"{overall_risk.get('average_risk_score', 0):.1f}/100")
     with col2:
-        risk_level = overall_risk.get('risk_level', 'low')
+        risk_level = overall_risk.get('average_risk_level', overall_risk.get('risk_level', 'low'))
         risk_level_cn = {'low': '低', 'medium': '中', 'high': '高', 'critical': '严重'}.get(risk_level, risk_level)
         st.metric("整体风险等级", risk_level_cn)
 
@@ -993,6 +989,7 @@ def display_batch_results(batch_results: Dict, extracted_files: List[Dict], conf
     # 各文件详细结果
     st.markdown("### 📄 各文件分析结果")
     file_results = batch_results.get('file_results', [])
+    source_cache = st.session_state.setdefault('batch_source_cache', {})
     
     for file_result in file_results:
         file_path = file_result.get('file_path', '未知')
@@ -1012,17 +1009,24 @@ def display_batch_results(batch_results: Dict, extracted_files: List[Dict], conf
                         st.write(f"- **{threat.get('threat_type', '未知')}** (严重程度: {threat.get('severity', 'medium')})")
                     
                     with st.expander("📖 文档阅读器（威胁片段）"):
-                        try:
-                            with open(file_path, 'r', encoding='utf-8', errors='ignore') as f:
-                                source_code = f.read()
+                        source_code = source_cache.get(file_path)
+                        if source_code is None and os.path.exists(file_path):
+                            try:
+                                with open(file_path, 'r', encoding='utf-8', errors='ignore') as f:
+                                    source_code = f.read()
+                                source_cache[file_path] = source_code
+                            except Exception:
+                                source_code = None
+                        if source_code:
                             render_threat_snippet_reader(source_code, threats)
-                        except Exception as e:
-                            st.warning(f"加载源码失败，无法展示片段：{e}")
+                        else:
+                            st.warning("加载源码失败，无法展示片段：源文件不存在或已被清理。")
             else:
                 st.error(f"分析失败：{file_result.get('error', '未知错误')}")
     
     st.markdown("---")
     st.markdown("### 📥 下载批量分析报告")
+    dl_col1, dl_col2, dl_col3 = st.columns(3)
     
     # 生成汇总报告
     if batch_results:
@@ -1036,7 +1040,14 @@ def display_batch_results(batch_results: Dict, extracted_files: List[Dict], conf
                 {
                     'file_path': fr.get('file_path'),
                     'risk_score': fr.get('result', {}).get('risk_assessment', {}).get('risk_score', 0) if fr.get('success') else 0,
-                    'threat_count': len(fr.get('result', {}).get('threats', [])) if fr.get('success') else 0
+                    'threat_count': len(fr.get('result', {}).get('threats', [])) if fr.get('success') else 0,
+                    'dynamic_summary': {
+                        'syscalls': len(fr.get('result', {}).get('dynamic_results', {}).get('syscalls', [])) if fr.get('success') else 0,
+                        'network_activities': len(fr.get('result', {}).get('dynamic_results', {}).get('network_activities', [])) if fr.get('success') else 0,
+                        'file_activities': len(fr.get('result', {}).get('dynamic_results', {}).get('file_activities', [])) if fr.get('success') else 0,
+                        'memory_findings': len(fr.get('result', {}).get('dynamic_results', {}).get('memory_findings', [])) if fr.get('success') else 0,
+                        'fuzz_results': len(fr.get('result', {}).get('dynamic_results', {}).get('fuzz_results', [])) if fr.get('success') else 0
+                    },
                 }
                 for fr in batch_results.get('file_results', [])
             ]
@@ -1049,17 +1060,14 @@ def display_batch_results(batch_results: Dict, extracted_files: List[Dict], conf
         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
         report_dir = config.get('settings', {}).get('report_path', 'data/reports/')
         os.makedirs(report_dir, exist_ok=True)
-        
-        col1, col2, col3 = st.columns(3)
-        
-        # JSON 报告
         json_report = generate_json_report(summary_report_data)
+        
         json_path = os.path.join(report_dir, f"batch_analysis_{timestamp}.json")
         with open(json_path, 'w', encoding='utf-8') as f:
             f.write(json_report)
         with open(json_path, 'r', encoding='utf-8') as f:
             json_content = f.read()
-        col1.download_button(
+        dl_col1.download_button(
             label="📄 下载 JSON 汇总报告",
             data=json_content,
             file_name=f"batch_analysis_{timestamp}.json",
@@ -1074,7 +1082,7 @@ def display_batch_results(batch_results: Dict, extracted_files: List[Dict], conf
             f.write(html_report)
         with open(html_path, 'r', encoding='utf-8') as f:
             html_content = f.read()
-        col2.download_button(
+        dl_col2.download_button(
             label="🌐 下载 HTML 汇总报告",
             data=html_content,
             file_name=f"batch_analysis_{timestamp}.html",
@@ -1089,7 +1097,7 @@ def display_batch_results(batch_results: Dict, extracted_files: List[Dict], conf
             f.write(markdown_report)
         with open(markdown_path, 'r', encoding='utf-8') as f:
             markdown_content = f.read()
-        col3.download_button(
+        dl_col3.download_button(
             label="📝 下载 Markdown 汇总报告",
             data=markdown_content,
             file_name=f"batch_analysis_{timestamp}.md",
@@ -1314,17 +1322,22 @@ def display_results(results: dict, file_path: str = None):
     
     # 动态分析结果
     dynamic = aggregated.get('dynamic', {})
-    if dynamic.get('network_activities') or dynamic.get('syscalls') or dynamic.get('fuzz_results'):
+    if dynamic.get('network_activities') or dynamic.get('syscalls') or dynamic.get('fuzz_results') or dynamic.get('file_activities') or dynamic.get('memory_findings'):
+
         st.markdown("---")
         with st.expander("🌐 动态分析结果"):
             syscalls = dynamic.get('syscalls', [])
             networks = dynamic.get('network_activities', [])
             fuzzes = dynamic.get('fuzz_results', [])
+            files = dynamic.get('file_activities', [])
+            memory = dynamic.get('memory_findings', [])
 
-            col1, col2, col3 = st.columns(3)
-            col1.metric("系统调用", len(syscalls))
-            col2.metric("网络活动", len(networks))
-            col3.metric("模糊测试", len(fuzzes))
+            col1, col2, col3, col4, col5 = st.columns(5)
+            col1.metric("\u7cfb\u7edf\u8c03\u7528", len(syscalls))
+            col2.metric("\u7f51\u7edc\u6d3b\u52a8", len(networks))
+            col3.metric("\u6587\u4ef6\u6d3b\u52a8", len(files))
+            col4.metric("\u5185\u5b58\u68c0\u6d4b", len(memory))
+            col5.metric("\u6a21\u7cca\u6d4b\u8bd5", len(fuzzes))
 
             if networks:
                 st.markdown("#### 网络活动详情")

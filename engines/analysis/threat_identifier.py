@@ -32,6 +32,8 @@ def identify_threats(aggregated_results: Dict[str, Any]) -> List[Dict[str, Any]]
     network_activities = dynamic.get('network_activities', [])
     syscalls = dynamic.get('syscalls', [])
     fuzz_results = dynamic.get('fuzz_results', [])
+    file_activities = dynamic.get('file_activities', [])
+    memory_findings = dynamic.get('memory_findings', [])
     
     # 1. Identify RCE (Remote Code Execution) threats
     rce_evidence = []
@@ -58,6 +60,12 @@ def identify_threats(aggregated_results: Dict[str, Any]) -> List[Dict[str, Any]]
         elif isinstance(syscall, str):
             if 'os.system' in syscall or 'subprocess' in syscall:
                 rce_evidence.append({'log_entry': syscall})
+                import re
+                for match in re.finditer(r'([A-Za-z]:\\[^:]+|/[^:]+):(\d+)', syscall):
+                    try:
+                        rce_lines.append(int(match.group(2)))
+                    except ValueError:
+                        continue
     
     if rce_evidence:
         threats.append({
@@ -154,10 +162,24 @@ def identify_threats(aggregated_results: Dict[str, Any]) -> List[Dict[str, Any]]
             line_str = activity.get('line', '')
             # Try to extract line number from stack trace in log
             import re
-            line_match = re.search(r':(\d+):', line_str)
-            if line_match:
-                network_lines.append(int(line_match.group(1)))
+            for match in re.finditer(r'([A-Za-z]:\\[^:]+|/[^:]+):(\d+)', line_str):
+                try:
+                    network_lines.append(int(match.group(2)))
+                except ValueError:
+                    continue
     
+
+    if not network_activities:
+        import re
+        for syscall in syscalls:
+            if isinstance(syscall, str) and '[ALERT] NETWORK:' in syscall:
+                network_evidence.append({'line': syscall})
+                for match in re.finditer(r'([A-Za-z]:\\[^:]+|/[^:]+):(\d+)', syscall):
+                    try:
+                        network_lines.append(int(match.group(2)))
+                    except ValueError:
+                        continue
+
     if network_evidence:
         threats.append({
             'threat_type': 'Network Exfiltration',
@@ -185,20 +207,51 @@ def identify_threats(aggregated_results: Dict[str, Any]) -> List[Dict[str, Any]]
             'evidence': file_risk_evidence,
             'line_numbers': sorted(set([l for l in file_risk_lines if l > 0]))
         })
+
+    # 7b. Identify Sensitive File Access (dynamic)
+    sensitive_file_evidence = [op for op in file_activities if op.get('is_sensitive')]
+    if sensitive_file_evidence:
+        sensitive_lines = []
+        for op in sensitive_file_evidence:
+            sensitive_lines.extend(op.get('line_numbers', []) or [])
+        threats.append({
+            'threat_type': 'Sensitive File Access',
+            'severity': 'high',
+            'description': 'Sensitive file activity detected during execution',
+            'evidence': sensitive_file_evidence,
+            'line_numbers': sorted(set([l for l in sensitive_lines if l > 0]))
+        })
     
     # 8. Identify Fuzzing crashes
     crash_evidence = []
     for fuzz_result in fuzz_results:
-        if fuzz_result.get('crashed', False):
+        if fuzz_result.get('crashed', False) and not fuzz_result.get('timed_out', False):
             crash_evidence.append(fuzz_result)
     
     if crash_evidence:
+        crash_lines = []
+        for crash in crash_evidence:
+            crash_lines.extend(crash.get('line_numbers', []) or [])
         threats.append({
             'threat_type': 'Runtime Vulnerability',
-            'severity': 'high',
-            'description': 'Runtime crashes detected during fuzzing: potential buffer overflow or exception handling issues',
+            'severity': 'medium',
+            'description': 'Runtime crashes detected during fuzzing (may indicate input validation issues)',
             'evidence': crash_evidence,
-            'line_numbers': []
+            'line_numbers': sorted(set([l for l in crash_lines if l > 0]))
+        })
+
+    # 9. Identify Memory Injection signals
+    if memory_findings:
+        memory_lines = []
+        memory_api = any(f.get('type') == 'memory_api' for f in memory_findings)
+        for finding in memory_findings:
+            memory_lines.extend(finding.get('line_numbers', []) or [])
+        threats.append({
+            'threat_type': 'Memory Injection',
+            'severity': 'high' if memory_api else 'medium',
+            'description': 'Runtime code execution or memory API usage detected',
+            'evidence': memory_findings,
+            'line_numbers': sorted(set([l for l in memory_lines if l > 0]))
         })
     
     return threats
